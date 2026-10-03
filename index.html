@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a0630">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calculatrice Magique">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Calculatrice Magique</title>
+<style>
+:root{
+  --bg:#1a0630; --card:#2a0b4a; --field:#3a1466; --line:#6a3aa8;
+  --text:#f6e6ff; --muted:#c9a8e8; --glow:#ff4fd8; --cta:#ff8a1f; --cta-ink:#1a0630; --result:#ffe66d;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  box-sizing:border-box;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{min-height:100%;background:var(--bg)}
+body{
+  margin:0; min-height:100vh; display:flex; justify-content:center; align-items:flex-start;
+  padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  background:radial-gradient(ellipse at top,#4a007d 0%,var(--bg) 60%);
+  color:var(--text); font-family:var(--font);
+}
+main{width:100%; max-width:440px; margin:auto 0}
+h1{
+  margin:0 0 20px; text-align:center; font-size:clamp(1.6rem,6vw,2.2rem); line-height:1.15;
+  text-shadow:0 0 22px var(--glow);
+}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:16px; padding:24px;
+  box-shadow:0 0 32px rgba(255,79,216,.28);
+}
+.field{display:block; margin-bottom:16px}
+.field span{display:block; margin-bottom:6px; font-size:.95rem; color:var(--muted)}
+select,input,button{
+  width:100%; min-height:48px; padding:10px 12px; font:inherit; font-size:1rem;
+  border-radius:10px; border:1px solid var(--line); background:var(--field); color:var(--text);
+  color-scheme:dark;
+}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--glow); outline-offset:2px}
+button{
+  margin-top:4px; border:0; background:var(--cta); color:var(--cta-ink);
+  font-weight:700; font-size:1.05rem; cursor:pointer;
+}
+button:hover{filter:brightness(1.1)}
+button:active{transform:scale(.98)}
+#results{
+  min-height:3.2em; margin-top:20px; display:flex; align-items:center; justify-content:center;
+  text-align:center; font-size:1.6rem; font-weight:700; color:var(--result);
+  opacity:0; transition:opacity .8s ease, text-shadow .8s ease;
+}
+#results.show{opacity:1; text-shadow:0 0 20px rgba(255,230,109,.7)}
+#results.error{font-size:1rem; font-weight:500; color:var(--text); text-shadow:none}
+.loading{display:none; text-align:center; margin-top:16px; color:var(--muted)}
+.spinner{
+  width:30px; height:30px; margin:0 auto 8px; border-radius:50%;
+  border:4px solid var(--line); border-top-color:var(--glow); animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .spinner{animation-duration:3s}
+  #results{transition:none}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <div class="card">
+    <label class="field"><span id="langLabel">Langue</span>
+      <select id="language">
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+        <option value="rw">Kinyarwanda</option>
+      </select>
+    </label>
+    <label class="field"><span id="birthLabel"></span><input id="birthDate" type="date"></label>
+    <label class="field"><span id="momentLabel"></span><input id="currentDate" type="date"></label>
+    <label class="field"><span id="timeLabel"></span><input id="currentTime" type="time"></label>
+    <button id="revealButton" type="button"></button>
+    <div id="loading" class="loading" role="status">
+      <div class="spinner"></div>
+      <p id="loadingText"></p>
+    </div>
+    <div id="results" aria-live="polite"></div>
+  </div>
+</main>
+
+<script>
+const labels = {
+  fr:{title:"🌟 Calculatrice Magique 🌟",lang:"Langue",birth:"Date de naissance",moment:"Date du moment",time:"Heure",button:"Révéler",loading:"Calcul en cours...",empty:"⚠️ Veuillez remplir tous les champs.",same:"⚠️ Les entrées ne peuvent pas toutes être identiques."},
+  en:{title:"🌟 Magic Calculator 🌟",lang:"Language",birth:"Birth date",moment:"Current date",time:"Time",button:"Reveal",loading:"Calculating...",empty:"⚠️ Please fill in all fields.",same:"⚠️ All inputs cannot be identical."},
+  rw:{title:"🌟 Imashini y'Ibanga 🌟",lang:"Ururimi",birth:"Itariki yo kuvuka",moment:"Itariki y'umwanya",time:"Isaha",button:"Erekana",loading:"Irimo kubara...",empty:"⚠️ Nyamuneka uzuza imyanya yose.",same:"⚠️ Ibyinjijwe ntibishobora kuba bimwe."}
+};
+const responses = {
+  fr:["surprise","conflit","aide","malaise","joie","stress","favorable","nouvelle considération","fin d'une situation"],
+  en:["surprise","conflict","help","discomfort","joy","stress","favorable","new consideration","end of a situation"],
+  rw:["gitangaza","amakimbirane","ubufasha","umubabaro","ibyishimo","igitutu","igihe cyiza","izina rishya","iherezo ry'igihe"]
+};
+
+const $ = (id) => document.getElementById(id);
+const langSel = $("language"), results = $("results"), loader = $("loading");
+
+function updateLanguage(){
+  const t = labels[langSel.value];
+  document.documentElement.lang = langSel.value;
+  $("title").textContent = t.title;
+  $("langLabel").textContent = t.lang;
+  $("birthLabel").textContent = t.birth;
+  $("momentLabel").textContent = t.moment;
+  $("timeLabel").textContent = t.time;
+  $("revealButton").textContent = t.button;
+  $("loadingText").textContent = t.loading;
+  document.title = t.title.replace(/🌟/g,"").trim();
+  try { localStorage.setItem("lang", langSel.value); } catch(e){}
+}
+
+function show(text, isError){
+  results.textContent = text;
+  results.classList.toggle("error", !!isError);
+  results.classList.add("show");
+}
+
+function revealResult(){
+  const lang = langSel.value, t = labels[lang];
+  const bd = $("birthDate").value, cd = $("currentDate").value, ct = $("currentTime").value;
+  results.classList.remove("show");
+
+  if(!bd || !cd || !ct) return show(t.empty, true);
+  if(bd === cd && cd === ct) return show(t.same, true);
+
+  loader.style.display = "block";
+  results.textContent = "";
+  setTimeout(() => {
+    loader.style.display = "none";
+    const combined = bd + cd + ct;
+    let sum = 0;
+    for(let i = 0; i < combined.length; i++) sum += combined.charCodeAt(i);
+    show(responses[lang][sum % responses[lang].length], false);
+  }, 1000);
+}
+
+// Date et heure du moment préremplies avec maintenant
+const now = new Date(), p = (n) => String(n).padStart(2,"0");
+$("currentDate").value = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+$("currentTime").value = `${p(now.getHours())}:${p(now.getMinutes())}`;
+
+try { const saved = localStorage.getItem("lang"); if(saved && labels[saved]) langSel.value = saved; } catch(e){}
+
+$("revealButton").addEventListener("click", revealResult);
+langSel.addEventListener("change", updateLanguage);
+updateLanguage();
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
